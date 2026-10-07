@@ -12,6 +12,7 @@ import {
   isRetiredModelPickerProvider,
   areRuntimeModelRefsEquivalent,
   isCliRuntimeProvider,
+  omitCliRuntimeAliasTwins,
   resolveCliRuntimeExecutionProvider as resolveCliRuntimeExecutionProviderBase,
 } from "./model-runtime-aliases.js";
 
@@ -364,6 +365,47 @@ describe("resolveCliRuntimeExecutionProvider", () => {
     expect(isVisibleProvider("claude-cli")).toBe(false);
     expect(isCliRuntimeProvider("acme-cli")).toBe(false);
     expect(isVisibleProvider("acme-cli")).toBe(true);
+  });
+
+  it("collapses CLI runtime rows only into a canonical row config pins to that runtime", () => {
+    cliBackendsTesting.setDepsForTest({
+      resolveRuntimeCliBackends: () => [
+        {
+          id: "claude-cli",
+          modelProvider: "anthropic",
+          pluginId: "anthropic",
+          config: { command: "claude" },
+        },
+      ],
+    });
+    const config: OpenClawConfig = {
+      agents: {
+        defaults: {
+          models: { "anthropic/claude-opus-5": { agentRuntime: { id: "claude-cli" } } },
+        },
+      },
+    };
+    const rows = [
+      { provider: "anthropic", id: "claude-opus-5", agentRuntime: { id: "claude-cli" } },
+      { provider: "claude-cli", id: "claude-opus-5" },
+      // A session runtime override, not config, routes this row through Claude CLI.
+      { provider: "anthropic", id: "claude-sonnet-5", agentRuntime: { id: "claude-cli" } },
+      { provider: "claude-cli", id: "claude-sonnet-5" },
+      { provider: "anthropic", id: "claude-fable-5", agentRuntime: { id: "openclaw" } },
+      { provider: "claude-cli", id: "claude-fable-5" },
+    ];
+
+    expect(
+      omitCliRuntimeAliasTwins(rows, { config, agentId: "main" }).map(
+        (row) => `${row.provider}/${row.id}`,
+      ),
+    ).toEqual([
+      "anthropic/claude-opus-5",
+      "anthropic/claude-sonnet-5",
+      "claude-cli/claude-sonnet-5",
+      "anthropic/claude-fable-5",
+      "claude-cli/claude-fable-5",
+    ]);
   });
 
   it("recognizes retired picker providers without loading CLI backend metadata", () => {
