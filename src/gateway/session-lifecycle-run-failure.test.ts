@@ -998,6 +998,7 @@ describe("CLI history through Gateway terminal persistence", () => {
         try {
           if (revoke === "fallback") {
             await expect(pending).rejects.toThrow("Terminal write owner changed");
+            await drainAgentRunTerminalWrites(f.admission.operationalRunInstance);
             expect(await loadTranscriptEvents(f.cliTarget)).toEqual(before);
           } else {
             await pending;
