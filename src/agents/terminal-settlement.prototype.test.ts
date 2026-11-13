@@ -9,6 +9,7 @@ function createHost() {
       const generation = {};
       current = generation;
       let state: "live" | "terminal" | "archived" | "deleted" | "unknown" = "live";
+      let revision = 0;
       let pending = 0;
       let sealed = false;
       let resolve!: () => void;
@@ -23,6 +24,7 @@ function createHost() {
       return {
         setState(next: typeof state) {
           state = next;
+          revision++;
         },
         admit() {
           if (current !== generation || sealed) {
@@ -44,10 +46,11 @@ function createHost() {
           if (!eligible() || sealed) {
             throw new Error("not eligible");
           }
+          const capturedRevision = revision;
           sealed = true;
           finish();
           await settled;
-          if (!eligible()) {
+          if (!eligible() || revision !== capturedRevision) {
             throw new Error("eligibility changed");
           }
           return read();
@@ -90,6 +93,16 @@ describe("terminal snapshot ordering model (not production)", () => {
       );
     });
   }
+  it("rejects resume then re-close while a writer settles", async () => {
+    const run = createHost().start();
+    const release = run.admit();
+    run.setState("terminal");
+    const result = run.snapshot(() => "stale");
+    run.setState("live");
+    run.setState("terminal");
+    release();
+    await assert.rejects(result, /eligibility changed/);
+  });
   it("accepts an explicitly archived generation in this model", async () => {
     const run = createHost().start();
     run.setState("archived");
